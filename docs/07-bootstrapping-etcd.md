@@ -29,20 +29,14 @@ wget -q --show-progress --https-only --timestamping \
 
 Extract and install the `etcd` server and the `etcdctl` command line utility:
 
-```
-{
-  tar -xvf etcd-v3.4.0-linux-amd64.tar.gz
-  sudo mv etcd-v3.4.0-linux-amd64/etcd* /usr/local/bin/
-}
+```bash
+  tar -xvf etcd-v3.4.0-linux-amd64.tar.gz && sudo mv etcd-v3.4.0-linux-amd64/etcd* /usr/local/bin/
 ```
 
 ### Configure the etcd Server
 
-```
-{
-  sudo mkdir -p /etc/etcd /var/lib/etcd
-  sudo cp ca.pem kubernetes-key.pem kubernetes.pem /etc/etcd/
-}
+```bash
+  sudo mkdir -p /etc/etcd /var/lib/etcd && sudo cp ca.pem kubernetes-key.pem kubernetes.pem /etc/etcd/
 ```
 
 Each etcd member must have a unique name within an etcd cluster. Set the etcd name to match the hostname of the current compute instance:
@@ -109,7 +103,7 @@ EOF
 
 ### Start and enable the etcd Server:
 
-```
+```bash
 sudo systemctl daemon-reload && sudo systemctl enable etcd --now
 
 ```
