@@ -22,7 +22,7 @@ I'm using tilix with a set of custom shortcuts, [config file is here](https://gi
 
 Download the official etcd release binaries from the [etcd](https://github.com/etcd-io/etcd) GitHub project:
 
-```
+```bash
 wget -q --show-progress --https-only --timestamping \
   "https://github.com/etcd-io/etcd/releases/download/v3.4.0/etcd-v3.4.0-linux-amd64.tar.gz"
 ```
@@ -30,13 +30,13 @@ wget -q --show-progress --https-only --timestamping \
 Extract and install the `etcd` server and the `etcdctl` command line utility:
 
 ```bash
-  tar -xvf etcd-v3.4.0-linux-amd64.tar.gz && sudo mv etcd-v3.4.0-linux-amd64/etcd* /usr/local/bin/
+tar -xvf etcd-v3.4.0-linux-amd64.tar.gz && sudo mv etcd-v3.4.0-linux-amd64/etcd* /usr/local/bin/
 ```
 
 ### Configure the etcd Server
 
 ```bash
-  sudo mkdir -p /etc/etcd /var/lib/etcd && sudo cp ca.pem kubernetes-key.pem kubernetes.pem /etc/etcd/
+sudo mkdir -p /etc/etcd /var/lib/etcd && sudo cp ca.pem kubernetes-key.pem kubernetes.pem /etc/etcd/
 ```
 
 Each etcd member must have a unique name within an etcd cluster. Set the etcd name to match the hostname of the current compute instance:
@@ -105,7 +105,6 @@ EOF
 
 ```bash
 sudo systemctl daemon-reload && sudo systemctl enable etcd --now
-
 ```
 
 > Remember to run the above commands on each master node: `master-1` and `master-2`.
