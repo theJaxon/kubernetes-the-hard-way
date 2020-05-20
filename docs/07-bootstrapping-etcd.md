@@ -1,18 +1,20 @@
-# Bootstrapping the etcd Cluster
+### What is etcd:
 
-Kubernetes components are stateless and store cluster state in [etcd](https://github.com/etcd-io/etcd). In this lab you will bootstrap a three node etcd cluster and configure it for high availability and secure remote access.
+* distributed Key-Value store that stores data across a **distributed cluster of machines** and makes sure the data is synchronized.
 
-## Prerequisites
+* etcd stores all data about **cluster-state**
 
-The commands in this lab must be run on each controller instance: `controller-0`, `controller-1`, and `controller-2`. Login to each controller instance using the `gcloud` command. Example:
+* installed on all the **master | controller** nodes
 
-```
-gcloud compute ssh controller-0
-```
+* The 2 etcd services installed on master nodes will be communicating with each other to form an **etcd-cluster**
 
-### Running commands in parallel with tmux
+### Prerequisites
 
-[tmux](https://github.com/tmux/tmux/wiki) can be used to run commands on multiple compute instances at the same time. See the [Running commands in parallel with tmux](01-prerequisites.md#running-commands-in-parallel-with-tmux) section in the Prerequisites lab.
+The commands in this lab must be run on each controller instance: `master-1` and `master-2` so ssh into these vagrant machines.
+
+### Running commands in parallel with tilix:
+
+I'm using tilix with a set of custom shortcuts, [config file is here](https://gist.github.com/theJaxon/592c33892c52e0e096f73b4e88119d9f) so i split the terminal with `$mod+h` then `$mod+s` to sync the input between the 2 terminals.
 
 ## Bootstrapping an etcd Cluster Member
 
@@ -43,17 +45,30 @@ Extract and install the `etcd` server and the `etcdctl` command line utility:
 }
 ```
 
-The instance internal IP address will be used to serve client requests and communicate with etcd cluster peers. Retrieve the internal IP address for the current compute instance:
-
-```
-INTERNAL_IP=$(curl -s -H "Metadata-Flavor: Google" \
-  http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/ip)
-```
-
 Each etcd member must have a unique name within an etcd cluster. Set the etcd name to match the hostname of the current compute instance:
 
+```bash
+# master-1 machine
+ETCD_NAME=master-1.com && echo $ETCD_NAME
+
+# master-2 machine
+ETCD_NAME=master-2.com && echo $ETCD_NAME
 ```
-ETCD_NAME=$(hostname -s)
+
+Set the internal IP for each machine in an environment variable:
+```bash
+# master-1 machine
+INTERNAL_IP=192.168.11.11 && echo $INTERNAL_IP
+
+# master-2 machine
+INTERNAL_IP=192.168.11.12 && echo $INTERNAL_IP
+```
+
+Allow the 2 nodes to communicate by setting the initial cluster:
+the initial cluster variable is [$ETCD_NAME of master-1]=[https://$INTERNAL_IP of master-1:2380],[$ETCD_NAME of master-2]=[https://$INTERNAL_IP of master-2:2380]
+
+```bash
+INITIAL_CLUSTER=master-1.com=https://192.168.11.11:2380,master-2.com=https://192.168.11.12:2380 && echo $INITIAL_CLUSTER
 ```
 
 Create the `etcd.service` systemd unit file:
@@ -81,7 +96,7 @@ ExecStart=/usr/local/bin/etcd \\
   --listen-client-urls https://${INTERNAL_IP}:2379,https://127.0.0.1:2379 \\
   --advertise-client-urls https://${INTERNAL_IP}:2379 \\
   --initial-cluster-token etcd-cluster-0 \\
-  --initial-cluster controller-0=https://10.240.0.10:2380,controller-1=https://10.240.0.11:2380,controller-2=https://10.240.0.12:2380 \\
+  --initial-cluster ${INITIAL_CLUSTER} \\
   --initial-cluster-state new \\
   --data-dir=/var/lib/etcd
 Restart=on-failure
@@ -92,17 +107,14 @@ WantedBy=multi-user.target
 EOF
 ```
 
-### Start the etcd Server
+### Start and enable the etcd Server:
 
 ```
-{
-  sudo systemctl daemon-reload
-  sudo systemctl enable etcd
-  sudo systemctl start etcd
-}
+sudo systemctl daemon-reload && sudo systemctl enable etcd --now
+
 ```
 
-> Remember to run the above commands on each controller node: `controller-0`, `controller-1`, and `controller-2`.
+> Remember to run the above commands on each master node: `master-1` and `master-2`.
 
 ## Verification
 
@@ -119,9 +131,33 @@ sudo ETCDCTL_API=3 etcdctl member list \
 > output
 
 ```
-3a57933972cb5131, started, controller-2, https://10.240.0.12:2380, https://10.240.0.12:2379
-f98dc20bce6225a0, started, controller-0, https://10.240.0.10:2380, https://10.240.0.10:2379
-ffed16798470cab5, started, controller-1, https://10.240.0.11:2380, https://10.240.0.11:2379
+1cc1c30827a7e2b2, started, master-2.com, https://192.168.11.12:2380, https://192.168.11.12:2379, false
+5da3ae547f1355df, started, master-1.com, https://192.168.11.11:2380, https://192.168.11.11:2379, false
+
+```
+
+List the etcd cluster members showing current leader:
+```bash
+sudo ETCDCTL_API=3 etcdctl endpoint status --write-out=table   --endpoints=https://127.0.0.1:2379   --cacert=/etc/etcd/ca.pem   --cert=/etc/etcd/kubernetes.pem   --key=/etc/etcd/kubernetes-key.pem
+```
+
+> output
+
+```bash
+# master-1
++------------------------+------------------+---------+---------+-----------+------------+-----------+------------+--------------------+--------+
+|        ENDPOINT        |        ID        | VERSION | DB SIZE | IS LEADER | IS LEARNER | RAFT TERM | RAFT INDEX | RAFT APPLIED INDEX | ERRORS |
++------------------------+------------------+---------+---------+-----------+------------+-----------+------------+--------------------+--------+
+| https://127.0.0.1:2379 | 5da3ae547f1355df |   3.4.0 |   25 kB |     false |      false |         2 |          6 |                  6 |        |
++------------------------+------------------+---------+---------+-----------+------------+-----------+------------+--------------------+--------+
+
+# master-2
++------------------------+------------------+---------+---------+-----------+------------+-----------+------------+--------------------+--------+
+|        ENDPOINT        |        ID        | VERSION | DB SIZE | IS LEADER | IS LEARNER | RAFT TERM | RAFT INDEX | RAFT APPLIED INDEX | ERRORS |
++------------------------+------------------+---------+---------+-----------+------------+-----------+------------+--------------------+--------+
+| https://127.0.0.1:2379 | 1cc1c30827a7e2b2 |   3.4.0 |   25 kB |      true |      false |         2 |          6 |                  6 |        |
++------------------------+------------------+---------+---------+-----------+------------+-----------+------------+--------------------+--------+
+
 ```
 
 Next: [Bootstrapping the Kubernetes Control Plane](08-bootstrapping-kubernetes-controllers.md)
