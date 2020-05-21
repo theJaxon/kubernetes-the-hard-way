@@ -1,24 +1,31 @@
+### What is the Kubernetes Control Plane:
+* Collection of services that controls the kubernetes cluster (must be installed on all the master nodes)
+
+* It's responsible for making decisions about the cluster 
+	* Scheduling
+	* detect & repond to cluster events i.e starting a new pod when the `replication-controller` replicas field is unsatisfied (auto-scaling)
+
+### What are the components of the Kubernetes Control Plane:
+1. **kube-apiserver**: allows interaction with the cluster, this is the `interface` to the control plane
+2. **etcd**: distributed datastore for the kubernetes cluster
+3. **kube-scheduler**: Finds worker nodes that are available for running pods
+4. **kube-controller-manager**: Collection of controllers (services that does other set of functionalities)
+5. **cloud-controller-manager**: Responsible for dealing with the cloud providers (GCP, amazon, azuer etc ..)
+
 # Bootstrapping the Kubernetes Control Plane
 
-In this lab you will bootstrap the Kubernetes control plane across three compute instances and configure it for high availability. You will also create an external load balancer that exposes the Kubernetes API Servers to remote clients. The following components will be installed on each node: Kubernetes API Server, Scheduler, and Controller Manager.
+In this lab you will bootstrap the Kubernetes control plane across 2 vagrant machines and configure it for high availability.
+You will also create an external load balancer that exposes the Kubernetes API Servers to remote clients. The following components will be installed on each node: Kubernetes API Server, Scheduler, and Controller Manager.
 
-## Prerequisites
-
-The commands in this lab must be run on each controller instance: `controller-0`, `controller-1`, and `controller-2`. Login to each controller instance using the `gcloud` command. Example:
-
-```
-gcloud compute ssh controller-0
-```
-
-### Running commands in parallel with tmux
-
-[tmux](https://github.com/tmux/tmux/wiki) can be used to run commands on multiple compute instances at the same time. See the [Running commands in parallel with tmux](01-prerequisites.md#running-commands-in-parallel-with-tmux) section in the Prerequisites lab.
+![apiserver-loadbalancer diagram]()
 
 ## Provision the Kubernetes Control Plane
 
 Create the Kubernetes configuration directory:
 
-```
+```bash
+# executed on both master-1 and master-2
+
 sudo mkdir -p /etc/kubernetes/config
 ```
 
@@ -26,7 +33,11 @@ sudo mkdir -p /etc/kubernetes/config
 
 Download the official Kubernetes release binaries:
 
-```
+> This command will take time so be patient
+
+```bash
+# executed on both master-1 and master-2
+
 wget -q --show-progress --https-only --timestamping \
   "https://storage.googleapis.com/kubernetes-release/release/v1.15.3/bin/linux/amd64/kube-apiserver" \
   "https://storage.googleapis.com/kubernetes-release/release/v1.15.3/bin/linux/amd64/kube-controller-manager" \
@@ -36,16 +47,22 @@ wget -q --show-progress --https-only --timestamping \
 
 Install the Kubernetes binaries:
 
-```
+```bash
+# on both master-1 and master-2
+
 {
-  chmod +x kube-apiserver kube-controller-manager kube-scheduler kubectl
-  sudo mv kube-apiserver kube-controller-manager kube-scheduler kubectl /usr/local/bin/
+  binaries='kube-apiserver kube-controller-manager kube-scheduler kubectl'
+  for binary in $binaries; do
+    chmod +x $binary && sudo mv $binary /usr/local/bin
+  done
 }
 ```
 
 ### Configure the Kubernetes API Server
 
-```
+```bash
+# on both master-1 and master-2
+
 {
   sudo mkdir -p /var/lib/kubernetes/
 
@@ -55,11 +72,23 @@ Install the Kubernetes binaries:
 }
 ```
 
-The instance internal IP address will be used to advertise the API Server to members of the cluster. Retrieve the internal IP address for the current compute instance:
+The machine's internal IP address will be used to advertise the API Server to members of the cluster, here we set a temporary environment variable holding the IP address:
 
+```bash
+# only on master-1
+INTERNAL_IP=192.168.11.11 && echo $INTERNAL_IP
+
+# only on master-2
+INTERNAL_IP=192.168.11.12 && echo $INTERNAL_IP
 ```
-INTERNAL_IP=$(curl -s -H "Metadata-Flavor: Google" \
-  http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/ip)
+
+set up a static IP environment variable for both masters on each machine:
+```bash
+# master-1 (on both machines)
+MASTER1_IP=192.168.11.11 && echo $MASTER1_IP
+
+# master-2 (on both machines)
+MASTER2_IP=192.168.11.12 && echo $MASTER2_IP
 ```
 
 Create the `kube-apiserver.service` systemd unit file:
@@ -86,7 +115,7 @@ ExecStart=/usr/local/bin/kube-apiserver \\
   --etcd-cafile=/var/lib/kubernetes/ca.pem \\
   --etcd-certfile=/var/lib/kubernetes/kubernetes.pem \\
   --etcd-keyfile=/var/lib/kubernetes/kubernetes-key.pem \\
-  --etcd-servers=https://10.240.0.10:2379,https://10.240.0.11:2379,https://10.240.0.12:2379 \\
+  --etcd-servers=https://$MASTER1_IP:2379,https://$MASTER2_IP:2379 \\
   --event-ttl=1h \\
   --encryption-provider-config=/var/lib/kubernetes/encryption-config.yaml \\
   --kubelet-certificate-authority=/var/lib/kubernetes/ca.pem \\
@@ -99,7 +128,8 @@ ExecStart=/usr/local/bin/kube-apiserver \\
   --service-node-port-range=30000-32767 \\
   --tls-cert-file=/var/lib/kubernetes/kubernetes.pem \\
   --tls-private-key-file=/var/lib/kubernetes/kubernetes-key.pem \\
-  --v=2
+  --v=2 \\
+  --kubelet-preferred-address-types=InternalIP,InternalDNS,Hostname,ExternalIP,ExternalDNS
 Restart=on-failure
 RestartSec=5
 
@@ -110,10 +140,10 @@ EOF
 
 ### Configure the Kubernetes Controller Manager
 
-Move the `kube-controller-manager` kubeconfig into place:
+Copy the `kube-controller-manager` kubeconfig into place:
 
-```
-sudo mv kube-controller-manager.kubeconfig /var/lib/kubernetes/
+```bash
+sudo cp kube-controller-manager.kubeconfig /var/lib/kubernetes/
 ```
 
 Create the `kube-controller-manager.service` systemd unit file:
@@ -150,8 +180,8 @@ EOF
 
 Move the `kube-scheduler` kubeconfig into place:
 
-```
-sudo mv kube-scheduler.kubeconfig /var/lib/kubernetes/
+```bash
+sudo cp kube-scheduler.kubeconfig /var/lib/kubernetes/
 ```
 
 Create the `kube-scheduler.yaml` configuration file:
@@ -189,28 +219,51 @@ EOF
 
 ### Start the Controller Services
 
-```
-{
-  sudo systemctl daemon-reload
-  sudo systemctl enable kube-apiserver kube-controller-manager kube-scheduler
-  sudo systemctl start kube-apiserver kube-controller-manager kube-scheduler
-}
+```bash
+sudo systemctl daemon-reload && sudo systemctl enable kube-apiserver kube-controller-manager kube-scheduler --now 
+
+# verify that services are enabled and started
+sudo systemctl status kube-apiserver kube-controller-manager kube-scheduler
 ```
 
 > Allow up to 10 seconds for the Kubernetes API Server to fully initialize.
 
-### Enable HTTP Health Checks
+Verify by querying the kubernetes control plane:
+```bash
+kubectl get componentstatuses --kubeconfig admin.kubeconfig 
+```
 
-A [Google Network Load Balancer](https://cloud.google.com/compute/docs/load-balancing/network) will be used to distribute traffic across the three API servers and allow each API server to terminate TLS connections and validate client certificates. The network load balancer only supports HTTP health checks which means the HTTPS endpoint exposed by the API server cannot be used. As a workaround the nginx webserver can be used to proxy HTTP health checks. In this section nginx will be installed and configured to accept HTTP health checks on port `80` and proxy the connections to the API server on `https://127.0.0.1:6443/healthz`.
+Expected output:
+```
+NAME                 STATUS    MESSAGE             ERROR
+scheduler            Healthy   ok                  
+controller-manager   Healthy   ok                  
+etcd-1               Healthy   {"health":"true"}   
+etcd-0               Healthy   {"health":"true"}  
+```
+---
+
+### Enable HTTP Health Checks:
+The load balancer needs to perform HTTP health checks against the kubernetes api in order to get the health status of the api nodes so that we avoid sending traffic to any of the unhealthy nodes
+
+check the health endpoint
+```bash
+# on both master-1 and master-2
+curl -k https://localhost:6443/healthz #expected response is: ok
+```
+
+The goal is to create a proxy to allow this check to happen even over HTTP (if the same command is executed again but with http instead of https it will fail).
 
 > The `/healthz` API server endpoint does not require authentication by default.
 
-Install a basic web server to handle HTTP health checks:
 
+Install NGINX web server to handle HTTP health checks:
+
+```bash
+sudo apt-get update && sudo apt-get install -y nginx
 ```
-sudo apt-get update
-sudo apt-get install -y nginx
-```
+
+Create a configuration file for our proxy:
 
 ```
 cat > kubernetes.default.svc.cluster.local <<EOF
@@ -226,44 +279,28 @@ server {
 EOF
 ```
 
-```
-{
-  sudo mv kubernetes.default.svc.cluster.local \
-    /etc/nginx/sites-available/kubernetes.default.svc.cluster.local
+```bash
+# config files are always placed in /etc/nginx/sites-available
+sudo mv kubernetes.default.svc.cluster.local \
+  /etc/nginx/sites-available/kubernetes.default.svc.cluster.local
 
-  sudo ln -s /etc/nginx/sites-available/kubernetes.default.svc.cluster.local /etc/nginx/sites-enabled/
-}
-```
-
-```
-sudo systemctl restart nginx
+# create a symlink to that file that will activate the previous config file
+sudo ln -s /etc/nginx/sites-available/kubernetes.default.svc.cluster.local /etc/nginx/sites-enabled/
 ```
 
-```
-sudo systemctl enable nginx
+```bash
+sudo systemctl restart nginx && sudo systemctl enable nginx
 ```
 
 ### Verification
 
-```
-kubectl get componentstatuses --kubeconfig admin.kubeconfig
-```
-
-```
-NAME                 STATUS    MESSAGE              ERROR
-controller-manager   Healthy   ok
-scheduler            Healthy   ok
-etcd-2               Healthy   {"health": "true"}
-etcd-0               Healthy   {"health": "true"}
-etcd-1               Healthy   {"health": "true"}
-```
-
 Test the nginx HTTP health check proxy:
 
-```
+```bash
 curl -H "Host: kubernetes.default.svc.cluster.local" -i http://127.0.0.1/healthz
 ```
 
+Expected response:
 ```
 HTTP/1.1 200 OK
 Server: nginx/1.14.0 (Ubuntu)
@@ -275,8 +312,6 @@ X-Content-Type-Options: nosniff
 
 ok
 ```
-
-> Remember to run the above commands on each controller node: `controller-0`, `controller-1`, and `controller-2`.
 
 ## RBAC for Kubelet Authorization
 
