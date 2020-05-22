@@ -5,7 +5,7 @@ In this lab you will bootstrap three Kubernetes worker nodes. The following comp
 2. [containerd](https://github.com/containerd/containerd)
 3. [kubelet](https://kubernetes.io/docs/admin/kubelet) 
 4. [kube-proxy](https://kubernetes.io/docs/concepts/cluster-administration/proxies).
-
+5. [CNI (container networking plugins)](https://github.com/containernetworking/cni)
 ## Prerequisites
 
 The commands in this lab must be run on each worker instance: `node-1`, `node-2`
@@ -23,6 +23,8 @@ The commands in this lab must be run on each worker instance: `node-1`, `node-2`
 * kubelet: controls each worker node and provides the APIs that are used by the `control plane` in order to manage and communicate with the worker nodes, the kubelet is the middle-man between the control plane and the container runtime
 
 * kube-proxy: Manages iptables rules on the worker node thus providing virtual network access to the pods
+
+* CNI: specification and libraries for writing plugins to configure network interfaces in Linux containers
 
 ## Provisioning a Kubernetes Worker Node
 
@@ -207,7 +209,6 @@ ExecStart=/usr/local/bin/kubelet \\
   --register-node=true \\
   --v=2 \\
   --hostname-override=${HOSTNAME} \\
-RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
