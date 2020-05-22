@@ -17,7 +17,7 @@
 In this lab you will bootstrap the Kubernetes control plane across 2 vagrant machines and configure it for high availability.
 You will also create an external load balancer that exposes the Kubernetes API Servers to remote clients. The following components will be installed on each node: Kubernetes API Server, Scheduler, and Controller Manager.
 
-![apiserver-loadbalancer diagram]()
+![apiserver-loadbalancer diagram](https://github.com/theJaxon/kubernetes-the-hard-way/blob/master/docs/images/08-bootstrapping-kubernetes-controllers/1-apiserver-loadbalancer.jpg)
 
 ## Provision the Kubernetes Control Plane
 
