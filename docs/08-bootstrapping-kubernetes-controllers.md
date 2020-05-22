@@ -313,17 +313,18 @@ X-Content-Type-Options: nosniff
 ok
 ```
 
+---
+
+### What is [RBAC authorization](https://kubernetes.io/docs/reference/access-authn-authz/rbac/):
+RBAC stands for Rule Based Access Control and is a method of manaing access to computers and network resources based on specific roles 
+
 ## RBAC for Kubelet Authorization
 
 In this section you will configure RBAC permissions to allow the Kubernetes API Server to access the Kubelet API on each worker node. Access to the Kubelet API is required for retrieving metrics, logs, and executing commands in pods.
 
 > This tutorial sets the Kubelet `--authorization-mode` flag to `Webhook`. Webhook mode uses the [SubjectAccessReview](https://kubernetes.io/docs/admin/authorization/#checking-api-access) API to determine authorization.
 
-The commands in this section will effect the entire cluster and only need to be run once from one of the controller nodes.
-
-```
-gcloud compute ssh controller-0
-```
+The commands in this section will affect the entire cluster and only need to be run once from one of the master nodes.
 
 Create the `system:kube-apiserver-to-kubelet` [ClusterRole](https://kubernetes.io/docs/admin/authorization/rbac/#role-and-clusterrole) with permissions to access the Kubelet API and perform most common tasks associated with managing pods:
 
@@ -351,9 +352,14 @@ rules:
 EOF
 ```
 
+Expected output
+```
+clusterrole.rbac.authorization.k8s.io/system:kube-apiserver-to-kubelet created
+```
+
 The Kubernetes API Server authenticates to the Kubelet as the `kubernetes` user using the client certificate as defined by the `--kubelet-client-certificate` flag.
 
-Bind the `system:kube-apiserver-to-kubelet` ClusterRole to the `kubernetes` user:
+Bind (assign) the `system:kube-apiserver-to-kubelet` ClusterRole to the `kubernetes` user:
 
 ```
 cat <<EOF | kubectl apply --kubeconfig admin.kubeconfig -f -
@@ -377,63 +383,58 @@ EOF
 
 In this section you will provision an external load balancer to front the Kubernetes API Servers. The `kubernetes-the-hard-way` static IP address will be attached to the resulting load balancer.
 
-> The compute instances created in this tutorial will not have permission to complete this section. **Run the following commands from the same machine used to create the compute instances**.
+Install nginx on the load-balancer machine:
+```bash
+sudo apt-get update && sudo apt-get -y install nginx
 
+# enable and start nginx 
+sudo systemctl enable nginx --now
 
-### Provision a Network Load Balancer
-
-Create the external load balancer network resources:
-
+sudo mkdir -p /etc/nginx/tcpconf.d
 ```
-{
-  KUBERNETES_PUBLIC_ADDRESS=$(gcloud compute addresses describe kubernetes-the-hard-way \
-    --region $(gcloud config get-value compute/region) \
-    --format 'value(address)')
 
-  gcloud compute http-health-checks create kubernetes \
-    --description "Kubernetes Health Check" \
-    --host "kubernetes.default.svc.cluster.local" \
-    --request-path "/healthz"
+Modify the nginx config file:
+```bash
+sudo vi /etc/nginx/nginx.conf
 
-  gcloud compute firewall-rules create kubernetes-the-hard-way-allow-health-check \
-    --network kubernetes-the-hard-way \
-    --source-ranges 209.85.152.0/22,209.85.204.0/22,35.191.0.0/16 \
-    --allow tcp
+# add to the last line in the file 
+include /etc/nginx/tcpconf.d/*;
 
-  gcloud compute target-pools create kubernetes-target-pool \
-    --http-health-check kubernetes
+# set temporary enviornment variables matching IP address of the master nodes
+MASTER1_IP=192.168.11.11 && echo $MASTER1_IP
+MASTER2_IP=192.168.11.12 && echo $MASTER2_IP
+```
 
-  gcloud compute target-pools add-instances kubernetes-target-pool \
-   --instances controller-0,controller-1,controller-2
+Create the configuration file at the newly created directory:
+```bash
+cat << EOF | sudo tee /etc/nginx/tcpconf.d/kubernetes.conf
+stream {
+  upstream kubernetes {
+    server $NODE1_IP:6443;
+    server $NODE2_IP:6443;
+  }
 
-  gcloud compute forwarding-rules create kubernetes-forwarding-rule \
-    --address ${KUBERNETES_PUBLIC_ADDRESS} \
-    --ports 6443 \
-    --region $(gcloud config get-value compute/region) \
-    --target-pool kubernetes-target-pool
+  server {
+    listen 6443;
+    listen 443;
+    proxy_pass kubernetes;
+  }
 }
+EOF
+```
+> kubernetes API server always listens to port 6443
+
+Reload nginx configuration
+```bash
+sudo nginx -s reload
 ```
 
-### Verification
-
-> The compute instances created in this tutorial will not have permission to complete this section. **Run the following commands from the same machine used to create the compute instances**.
-
-Retrieve the `kubernetes-the-hard-way` static IP address:
-
-```
-KUBERNETES_PUBLIC_ADDRESS=$(gcloud compute addresses describe kubernetes-the-hard-way \
-  --region $(gcloud config get-value compute/region) \
-  --format 'value(address)')
+Test the configuration:
+```bash
+curl -k https://localhost:6443/version
 ```
 
-Make a HTTP request for the Kubernetes version info:
-
-```
-curl --cacert ca.pem https://${KUBERNETES_PUBLIC_ADDRESS}:6443/version
-```
-
-> output
-
+Expected output:
 ```
 {
   "major": "1",
