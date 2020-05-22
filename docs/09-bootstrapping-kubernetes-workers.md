@@ -1,28 +1,35 @@
 # Bootstrapping the Kubernetes Worker Nodes
 
-In this lab you will bootstrap three Kubernetes worker nodes. The following components will be installed on each node: [runc](https://github.com/opencontainers/runc), [container networking plugins](https://github.com/containernetworking/cni), [containerd](https://github.com/containerd/containerd), [kubelet](https://kubernetes.io/docs/admin/kubelet), and [kube-proxy](https://kubernetes.io/docs/concepts/cluster-administration/proxies).
+In this lab you will bootstrap three Kubernetes worker nodes. The following components will be installed on each node:
+1. [runc](https://github.com/opencontainers/runc)
+2. [containerd](https://github.com/containerd/containerd)
+3. [kubelet](https://kubernetes.io/docs/admin/kubelet) 
+4. [kube-proxy](https://kubernetes.io/docs/concepts/cluster-administration/proxies).
 
 ## Prerequisites
 
-The commands in this lab must be run on each worker instance: `worker-0`, `worker-1`, and `worker-2`. Login to each worker instance using the `gcloud` command. Example:
+The commands in this lab must be run on each worker instance: `node-1`, `node-2`
 
-```
-gcloud compute ssh worker-0
-```
+### What are the worker nodes:
+* These are the servers responsible for doing the actual work (running container applications) that are managed by kubernetes.
 
-### Running commands in parallel with tmux
+* The control plane is responsible for orchestrating and automating the usage of containers but the worker nodes are where these containers will be running.
 
-[tmux](https://github.com/tmux/tmux/wiki) can be used to run commands on multiple compute instances at the same time. See the [Running commands in parallel with tmux](01-prerequisites.md#running-commands-in-parallel-with-tmux) section in the Prerequisites lab.
+### What each component on the worker nodes does:
+* [runc](https://stackoverflow.com/questions/41645665/how-containerd-compares-to-runc): used by containerd for spawning and running containers based on OCI specifications
+
+* containerd: a container runtime that downloads the images and runs the containers (the exact equivalent of docker)
+
+* kubelet: controls each worker node and provides the APIs that are used by the `control plane` in order to manage and communicate with the worker nodes, the kubelet is the middle-man between the control plane and the container runtime
+
+* kube-proxy: Manages iptables rules on the worker node thus providing virtual network access to the pods
 
 ## Provisioning a Kubernetes Worker Node
 
 Install the OS dependencies:
 
-```
-{
-  sudo apt-get update
-  sudo apt-get -y install socat conntrack ipset
-}
+```bash
+sudo apt-get update && sudo apt-get -y install socat conntrack ipset
 ```
 
 > The socat binary enables support for the `kubectl port-forward` command.
@@ -60,7 +67,7 @@ wget -q --show-progress --https-only --timestamping \
 
 Create the installation directories:
 
-```
+``` 
 sudo mkdir -p \
   /etc/cni/net.d \
   /opt/cni/bin \
@@ -72,67 +79,23 @@ sudo mkdir -p \
 
 Install the worker binaries:
 
-```
+```bash
 {
-  mkdir containerd
   tar -xvf crictl-v1.15.0-linux-amd64.tar.gz
-  tar -xvf containerd-1.2.9.linux-amd64.tar.gz -C containerd
   sudo tar -xvf cni-plugins-linux-amd64-v0.8.2.tgz -C /opt/cni/bin/
   sudo mv runc.amd64 runc
   chmod +x crictl kubectl kube-proxy kubelet runc 
   sudo mv crictl kubectl kube-proxy kubelet runc /usr/local/bin/
-  sudo mv containerd/bin/* /bin/
+  sudo tar -xvf containerd-1.2.9.linux-amd64.tar.gz -C /
 }
 ```
-
-### Configure CNI Networking
-
-Retrieve the Pod CIDR range for the current compute instance:
-
-```
-POD_CIDR=$(curl -s -H "Metadata-Flavor: Google" \
-  http://metadata.google.internal/computeMetadata/v1/instance/attributes/pod-cidr)
-```
-
-Create the `bridge` network configuration file:
-
-```
-cat <<EOF | sudo tee /etc/cni/net.d/10-bridge.conf
-{
-    "cniVersion": "0.3.1",
-    "name": "bridge",
-    "type": "bridge",
-    "bridge": "cnio0",
-    "isGateway": true,
-    "ipMasq": true,
-    "ipam": {
-        "type": "host-local",
-        "ranges": [
-          [{"subnet": "${POD_CIDR}"}]
-        ],
-        "routes": [{"dst": "0.0.0.0/0"}]
-    }
-}
-EOF
-```
-
-Create the `loopback` network configuration file:
-
-```
-cat <<EOF | sudo tee /etc/cni/net.d/99-loopback.conf
-{
-    "cniVersion": "0.3.1",
-    "name": "lo",
-    "type": "loopback"
-}
-EOF
-```
+---
 
 ### Configure containerd
 
 Create the `containerd` configuration file:
 
-```
+```bash
 sudo mkdir -p /etc/containerd/
 ```
 
@@ -145,6 +108,10 @@ cat << EOF | sudo tee /etc/containerd/config.toml
       runtime_type = "io.containerd.runtime.v1.linux"
       runtime_engine = "/usr/local/bin/runc"
       runtime_root = ""
+    [plugins.cri.containerd.untrusted_workload_runtime]
+      runtime_type = "io.containerd.runtime.v1.linux"
+      runtime_engine = "/usr/local/bin/runsc"
+      runtime_root = "/run/containerd/runsc"
 EOF
 ```
 
@@ -176,11 +143,20 @@ EOF
 
 ### Configure the Kubelet
 
+Set temporary hostname env variable:
+```bash
+# node-1
+HOSTNAME=node-1.com && echo $HOSTNAME
+
+# node-2
+HOSTNAME=node-2.com && echo $HOSTNAME
 ```
+
+```bash
 {
-  sudo mv ${HOSTNAME}-key.pem ${HOSTNAME}.pem /var/lib/kubelet/
-  sudo mv ${HOSTNAME}.kubeconfig /var/lib/kubelet/kubeconfig
-  sudo mv ca.pem /var/lib/kubernetes/
+  sudo mv -v ${HOSTNAME}-key.pem ${HOSTNAME}.pem /var/lib/kubelet/
+  sudo mv -v ${HOSTNAME}.kubeconfig /var/lib/kubelet/kubeconfig
+  sudo mv -v ca.pem /var/lib/kubernetes/
 }
 ```
 
@@ -202,8 +178,6 @@ authorization:
 clusterDomain: "cluster.local"
 clusterDNS:
   - "10.32.0.10"
-podCIDR: "${POD_CIDR}"
-resolvConf: "/run/systemd/resolve/resolv.conf"
 runtimeRequestTimeout: "15m"
 tlsCertFile: "/var/lib/kubelet/${HOSTNAME}.pem"
 tlsPrivateKeyFile: "/var/lib/kubelet/${HOSTNAME}-key.pem"
@@ -231,8 +205,8 @@ ExecStart=/usr/local/bin/kubelet \\
   --kubeconfig=/var/lib/kubelet/kubeconfig \\
   --network-plugin=cni \\
   --register-node=true \\
-  --v=2
-Restart=on-failure
+  --v=2 \\
+  --hostname-override=${HOSTNAME} \\
 RestartSec=5
 
 [Install]
@@ -242,8 +216,8 @@ EOF
 
 ### Configure the Kubernetes Proxy
 
-```
-sudo mv kube-proxy.kubeconfig /var/lib/kube-proxy/kubeconfig
+```bash
+sudo mv -v kube-proxy.kubeconfig /var/lib/kube-proxy/kubeconfig
 ```
 
 Create the `kube-proxy-config.yaml` configuration file:
@@ -280,12 +254,11 @@ EOF
 
 ### Start the Worker Services
 
-```
-{
-  sudo systemctl daemon-reload
-  sudo systemctl enable containerd kubelet kube-proxy
-  sudo systemctl start containerd kubelet kube-proxy
-}
+```bash
+sudo systemctl daemon-reload && sudo systemctl enable containerd kubelet kube-proxy --now
+
+# verify that all services are working 
+sudo systemctl status containerd kubelet kube-proxy 
 ```
 
 > Remember to run the above commands on each worker node: `worker-0`, `worker-1`, and `worker-2`.
