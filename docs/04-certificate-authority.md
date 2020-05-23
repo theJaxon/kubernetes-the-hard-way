@@ -299,11 +299,7 @@ Generate the Kubernetes API Server certificate and private key:
 ```
 {
 
-KUBERNETES_PUBLIC_ADDRESS=$(gcloud compute addresses describe kubernetes-the-hard-way \
-  --region $(gcloud config get-value compute/region) \
-  --format 'value(address)')
-
-KUBERNETES_HOSTNAMES=kubernetes,kubernetes.default,kubernetes.default.svc,kubernetes.default.svc.cluster,kubernetes.svc.cluster.local
+CERT_HOSTNAME=10.32.0.1,192.168.11.11,master-1.com,192.168.11.12,master-2.com,192.168.13.11,load-balancer.com,127.0.0.1,localhost,kubernetes.default
 
 cat > kubernetes-csr.json <<EOF
 {
@@ -328,7 +324,7 @@ cfssl gencert \
   -ca=ca.pem \
   -ca-key=ca-key.pem \
   -config=ca-config.json \
-  -hostname=10.32.0.1,10.240.0.10,10.240.0.11,10.240.0.12,${KUBERNETES_PUBLIC_ADDRESS},127.0.0.1,${KUBERNETES_HOSTNAMES} \
+  -hostname=${CERT_HOSTNAME} \
   -profile=kubernetes \
   kubernetes-csr.json | cfssljson -bare kubernetes
 
