@@ -262,26 +262,24 @@ sudo systemctl daemon-reload && sudo systemctl enable containerd kubelet kube-pr
 sudo systemctl status containerd kubelet kube-proxy 
 ```
 
-> Remember to run the above commands on each worker node: `worker-0`, `worker-1`, and `worker-2`.
+> Remember to run the above commands on each worker node: `node-1` and `node-2`.
 
 ## Verification
 
-> The compute instances created in this tutorial will not have permission to complete this section. Run the following commands from the same machine used to create the compute instances.
-
 List the registered Kubernetes nodes:
 
-```
-gcloud compute ssh controller-0 \
-  --command "kubectl get nodes --kubeconfig admin.kubeconfig"
+```bash
+# From master-1
+kubectl get nodes --kubeconfig admin.kubeconfig
 ```
 
 > output
 
 ```
-NAME       STATUS   ROLES    AGE   VERSION
-worker-0   Ready    <none>   15s   v1.15.3
-worker-1   Ready    <none>   15s   v1.15.3
-worker-2   Ready    <none>   15s   v1.15.3
+NAME         STATUS   ROLES    AGE   VERSION
+node-1.com   Ready    <none>   40h   v1.15.3
+node-2.com   Ready    <none>   40h   v1.15.3
+
 ```
 
 Next: [Configuring kubectl for Remote Access](10-configuring-kubectl.md)
