@@ -58,8 +58,8 @@ busybox   1/1     Running   0          3s
 
 Retrieve the full name of the `busybox` pod:
 
-```
-POD_NAME=$(kubectl get pods -l run=busybox -o jsonpath="{.items[0].metadata.name}")
+```bash
+POD_NAME=$(kubectl get pods -l run=busybox -o jsonpath="{.items[0].metadata.name}") && echo $POD_NAME
 ```
 
 Execute a DNS lookup for the `kubernetes` service inside the `busybox` pod:
@@ -67,6 +67,8 @@ Execute a DNS lookup for the `kubernetes` service inside the `busybox` pod:
 ```
 kubectl exec -ti $POD_NAME -- nslookup kubernetes
 ```
+> Kubernetes after nslookup is a domain name within the cluster
+
 
 > output
 
@@ -76,6 +78,11 @@ Address 1: 10.32.0.10 kube-dns.kube-system.svc.cluster.local
 
 Name:      kubernetes
 Address 1: 10.32.0.1 kubernetes.default.svc.cluster.local
+```
+
+### Cleanup:
+```bash
+kubectl delete deployment busybox
 ```
 
 Next: [Smoke Test](13-smoke-test.md)
