@@ -176,6 +176,7 @@ cfssl gencert \
   -profile=kubernetes \
   node-2.com-csr.json | cfssljson -bare node-2.com
 done
+```
 
 Results:
 
