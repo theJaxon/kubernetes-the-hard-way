@@ -1,0 +1,5 @@
+192.168.11.11 master-1.com 
+192.168.11.12 master-2.com
+192.168.12.11 node-1.com
+192.168.12.12 node-2.com
+192.168.13.11 load-balancer.com 

@@ -1,63 +1,66 @@
 # Prerequisites
 
-## Google Cloud Platform
+### [Vagrant](https://www.vagrantup.com/):
+To be able to apply kuberntes the hard way locally vagrant was chosen, using [multi machine setup](https://github.com/theJaxon/kubernetes-the-hard-way/blob/master/Vagrantfile) as follows:
+- 2 master nodes
+- 2 worker nodes 
+- 1 load balancer node 
 
-This tutorial leverages the [Google Cloud Platform](https://cloud.google.com/) to streamline provisioning of the compute infrastructure required to bootstrap a Kubernetes cluster from the ground up. [Sign up](https://cloud.google.com/free/) for $300 in free credits.
+```Ruby
+IMAGE_NAME = "ubuntu/bionic64"
+ADAPTER = "TP-LINK Wireless USB Adapter"
+N = 2
 
-[Estimated cost](https://cloud.google.com/products/calculator/#id=55663256-c384-449c-9306-e39893e23afb) to run this tutorial: $0.23 per hour ($5.46 per day).
+Vagrant.configure("2") do |config|
+  config.vm.box_check_update = false
 
-> The compute resources required for this tutorial exceed the Google Cloud Platform free tier.
+  # Master Nodes
+  (1..N).each do |i|
+    config.vm.define "master-#{i}" do |master|
+      master.vm.box = IMAGE_NAME
+      master.vm.hostname = "master-#{i}"
+      master.vm.network "private_network", ip: "192.168.11.#{i + 10}", bridge: "#{ADAPTER}"
+    end
+  end
 
-## Google Cloud Platform SDK
+  # Worker Nodes 
+  (1..N).each do |i|
+    config.vm.define "node-#{i}" do |node|
+      node.vm.box = IMAGE_NAME
+      node.vm.hostname = "node-#{i}"
+      node.vm.network "private_network", ip: "192.168.12.#{i + 10}", bridge: "#{ADAPTER}"
+    end
+  end
 
-### Install the Google Cloud SDK
-
-Follow the Google Cloud SDK [documentation](https://cloud.google.com/sdk/) to install and configure the `gcloud` command line utility.
-
-Verify the Google Cloud SDK version is 262.0.0 or higher:
-
-```
-gcloud version
-```
-
-### Set a Default Compute Region and Zone
-
-This tutorial assumes a default compute region and zone have been configured.
-
-If you are using the `gcloud` command-line tool for the first time `init` is the easiest way to do this:
-
-```
-gcloud init
-```
-
-Then be sure to authorize gcloud to access the Cloud Platform with your Google user credentials:
-
-```
-gcloud auth login
-```
-
-Next set a default compute region and compute zone:
-
-```
-gcloud config set compute/region us-west1
-```
-
-Set a default compute zone:
-
-```
-gcloud config set compute/zone us-west1-c
+  # Load Balancer 
+  config.vm.define "load-balancer" do |lb|
+    lb.vm.box = IMAGE_NAME
+    lb.vm.hostname = "load-balancer"
+    lb.vm.network "private_network", ip: "192.168.13.11", bridge: "#{ADAPTER}"
+  end
+end
+  
 ```
 
-> Use the `gcloud compute zones list` command to view additional regions and zones.
+### Local DNS with /etc/hosts:
+The `/etc/hosts` file was modified to match the following domain names to each machine ip as follows:
+```
+192.168.11.11 master-1.com 
+192.168.11.12 master-2.com
+192.168.12.11 node-1.com
+192.168.12.12 node-2.com
+192.168.13.11 load-balancer.com 
+```
 
-## Running Commands in Parallel with tmux
-
-[tmux](https://github.com/tmux/tmux/wiki) can be used to run commands on multiple compute instances at the same time. Labs in this tutorial may require running the same commands across multiple compute instances, in those cases consider using tmux and splitting a window into multiple panes with synchronize-panes enabled to speed up the provisioning process.
-
-> The use of tmux is optional and not required to complete this tutorial.
-
-![tmux screenshot](images/tmux-screenshot.png)
-
-> Enable synchronize-panes by pressing `ctrl+b` followed by `shift+:`. Next type `set synchronize-panes on` at the prompt. To disable synchronization: `set synchronize-panes off`.
+### Configure [Tilix](https://gnunn1.github.io/tilix-web/):
+Tilix was modified to allow running command in sync, easier splitting horizontally and vertically using easy to remember shortcuts, keybindings are written next while the full config file can be found [here](https://gist.github.com/theJaxon/592c33892c52e0e096f73b4e88119d9f):
+```
+[keybindings]
+session-add-down='<Super>h'
+session-add-right='<Super>v'
+session-name='<Super>r'
+session-synchronize-input='<Super>s'
+terminal-close='<Super>q'
+```
 
 Next: [Installing the Client Tools](02-client-tools.md)
