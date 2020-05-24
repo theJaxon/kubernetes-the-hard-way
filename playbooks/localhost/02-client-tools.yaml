@@ -1,0 +1,34 @@
+---
+  - name: "Installing the Client Tools"
+    hosts: localhost
+    connection: local 
+    become: true
+    become_method: sudo
+
+    vars:
+      destination_directory: '/usr/local/bin'
+      username: j
+    tasks:
+
+    - name: main KTHW folder on localhost
+      file:
+        path: "/home/{{ username }}/KTHW"
+        state: directory
+
+    - name: "CFSSL installation"
+      get_url:
+        url: https://storage.googleapis.com/kubernetes-the-hard-way/cfssl/linux/cfssl
+        dest: "{{ destination_directory }}"
+        mode: 'ugo+x'
+
+    - name: "CFSSLjson installation"
+      get_url:
+        url: https://storage.googleapis.com/kubernetes-the-hard-way/cfssl/linux/cfssljson
+        dest: "{{ destination_directory }}"
+        mode: 'ugo+x'
+
+    - name: "Kubectl installation"
+      get_url:
+        url: https://storage.googleapis.com/kubernetes-release/release/v1.15.3/bin/linux/amd64/kubectl
+        dest: "{{ destination_directory }}"
+        mode: 'ugo+x'

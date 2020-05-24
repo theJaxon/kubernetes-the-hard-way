@@ -1,0 +1,2 @@
+---
+- import_playbook: localhost/02-client-tools.yaml
