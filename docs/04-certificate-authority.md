@@ -54,9 +54,12 @@ cfssl gencert -initca ca-csr.json | cfssljson -bare ca
 Results:
 
 ```
-ca-key.pem
-ca.pem
+ca.pem ca-key.pem 
+ca-config.json  ca-csr.json    ca.csr  
 ```
+> What matters is the first 2 `ca.pem` and `ca-key.pem`
+
+> All the generated files were archived to `localhost/KTHW/certs/ca.tar`
 
 ## Client and Server Certificates
 
@@ -101,8 +104,8 @@ cfssl gencert \
 Results:
 
 ```
-admin-key.pem
-admin.pem
+admin.pem admin-key.pem
+admin-csr.json admin.csr
 ```
 
 ### The Kubelet Client Certificates
@@ -112,10 +115,11 @@ Kubernetes uses a [special-purpose authorization mode](https://kubernetes.io/doc
 Generate a certificate and private key for each Kubernetes worker node:
 
 ```
-for instance in worker-0 worker-1 worker-2; do
-cat > ${instance}-csr.json <<EOF
+# node-1
+
+cat > node-1.com-csr.json <<EOF
 {
-  "CN": "system:node:${instance}",
+  "CN": "system:node:node-1.com",
   "key": {
     "algo": "rsa",
     "size": 2048
@@ -132,31 +136,54 @@ cat > ${instance}-csr.json <<EOF
 }
 EOF
 
-EXTERNAL_IP=$(gcloud compute instances describe ${instance} \
-  --format 'value(networkInterfaces[0].accessConfigs[0].natIP)')
+cfssl gencert \
+  -ca=ca.pem \
+  -ca-key=ca-key.pem \
+  -config=ca-config.json \
+  -hostname=192.168.12.11,node-1.com \
+  -profile=kubernetes \
+  node-1.com-csr.json | cfssljson -bare node-1.com
+done
+```
 
-INTERNAL_IP=$(gcloud compute instances describe ${instance} \
-  --format 'value(networkInterfaces[0].networkIP)')
+```
+# node-2
+
+cat > node-2.com-csr.json <<EOF
+{
+  "CN": "system:node:node-2.com",
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [
+    {
+      "C": "US",
+      "L": "Portland",
+      "O": "system:nodes",
+      "OU": "Kubernetes The Hard Way",
+      "ST": "Oregon"
+    }
+  ]
+}
+EOF
 
 cfssl gencert \
   -ca=ca.pem \
   -ca-key=ca-key.pem \
   -config=ca-config.json \
-  -hostname=${instance},${EXTERNAL_IP},${INTERNAL_IP} \
+  -hostname=192.168.12.12,node-2.com \
   -profile=kubernetes \
-  ${instance}-csr.json | cfssljson -bare ${instance}
+  node-2.com-csr.json | cfssljson -bare node-2.com
 done
-```
 
 Results:
 
 ```
-worker-0-key.pem
-worker-0.pem
-worker-1-key.pem
-worker-1.pem
-worker-2-key.pem
-worker-2.pem
+node-1.com.pem
+node-1.com-key.pem
+node-2.com.pem
+node-2.com-key.pem
 ```
 
 ### The Controller Manager Client Certificate
@@ -198,8 +225,8 @@ cfssl gencert \
 Results:
 
 ```
-kube-controller-manager-key.pem
-kube-controller-manager.pem
+kube-controller-manager-key.pem kube-controller-manager.pem
+kube-controller-manager-csr.json kube-controller-manager.csr
 ```
 
 
@@ -242,8 +269,8 @@ cfssl gencert \
 Results:
 
 ```
-kube-proxy-key.pem
-kube-proxy.pem
+kube-proxy-key.pem kube-proxy.pem
+kube-proxy.csr kube-proxy-csr.json
 ```
 
 ### The Scheduler Client Certificate
@@ -285,8 +312,8 @@ cfssl gencert \
 Results:
 
 ```
-kube-scheduler-key.pem
-kube-scheduler.pem
+kube-scheduler-key.pem kube-scheduler.pem
+kube-scheduler-csr.json kube-scheduler.csr
 ```
 
 
@@ -298,7 +325,6 @@ Generate the Kubernetes API Server certificate and private key:
 
 ```
 {
-
 CERT_HOSTNAME=10.32.0.1,192.168.11.11,master-1.com,192.168.11.12,master-2.com,192.168.13.11,load-balancer.com,127.0.0.1,localhost,kubernetes.default
 
 cat > kubernetes-csr.json <<EOF
